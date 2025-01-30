@@ -110,11 +110,13 @@ class ARCCache:
         }
 
 
-def load_sequence(file_path):
+def load_sequence(file_path, start_time=0, end_time=float('inf')):
     """
     Loads the sequence of page requests from a CSV file.
 
     :param file_path: Path to the CSV file.
+    :param start_time: Start time for filtering requests.
+    :param end_time: End time for filtering requests.
     :return: List of tuples (page number, operation type).
     """
     sequence = []
@@ -123,10 +125,12 @@ def load_sequence(file_path):
             reader = csv.reader(file)
             for row in reader:
                 try:
-                    page = int(float(row[2])) // 4096
-                    operation = row[4].strip()
-                    if operation in {"Read", "Write"}:
-                        sequence.append((page, operation))
+                    timestamp = float(row[0])
+                    if start_time <= timestamp <= end_time:
+                        page = int(float(row[2])) // 4096
+                        operation = row[4].strip()
+                        if operation in {"Read", "Write"}:
+                            sequence.append((page, operation))
                 except (ValueError, IndexError):
                     continue
     except FileNotFoundError:
@@ -153,22 +157,24 @@ def display_results(stats, filename):
         ["Total Misses", stats["Total Misses"], f"{100 - stats['Overall Hit Ratio']:.2f}%"],
     ]
     headers = ["Metric", "Count", "Ratio"]
-    print(f"\nSimulation Results for {filename}:")
+    print(f"\nSimulation Results:")
     print(tabulate(table, headers=headers, tablefmt="grid"))
     print("----------------------------")
 
 
-def run_simulation(file_name, cache_size):
+def run_simulation(file_name, cache_size, start_time=0, end_time=float('inf')):
     """
     Runs the ARC simulation for a specific file.
 
     :param file_name: Name of the CSV file.
     :param cache_size: Maximum number of pages the cache can hold.
+    :param start_time: Start time for filtering requests.
+    :param end_time: End time for filtering requests.
     """
     script_dir = Path(__file__).parent
     file_path = script_dir / file_name
 
-    sequence = load_sequence(file_path)
+    sequence = load_sequence(file_path, start_time, end_time)
     if not sequence:
         print(f"Error: No valid page references found in {file_name}.")
         return
@@ -183,10 +189,12 @@ def main():
     Main function to execute the ARC simulation for multiple files.
     """
     filenames = ["A42.csv", "A108.csv", "A129.csv", "A669.csv"]
-    cache_size = 10000
+
+    cache_size = int(input("Enter cache size (default: 10000): ") or 10000)
+    start_time = float(input("Enter start time (default: 0): ") or 0)
+    end_time = float(input("Enter end time (default: infinity): ") or float('inf'))
 
     for file_name in filenames:
-        run_simulation(file_name, cache_size)
-
+        run_simulation(file_name, cache_size, start_time, end_time)
 
 main()

@@ -79,11 +79,13 @@ class CacheSimulator:
         """
         self.cache_size = cache_size
 
-    def read_csv(self, filename):
+    def read_csv(self, filename, start_time=0, end_time=INFINITY):
         """
-        Reads the relevant columns from a CSV file.
+        Reads the relevant columns from a CSV file and filters requests based on start and end time.
 
         :param filename: Path to the CSV file.
+        :param start_time: Start time for filtering requests.
+        :param end_time: End time for filtering requests.
         :return: List of tuples containing (page_offset, request_type).
         """
         sequence = []
@@ -93,6 +95,9 @@ class CacheSimulator:
                 if len(row) < 5:
                     continue
                 try:
+                    timestamp = float(row[0])
+                    if timestamp < start_time or timestamp > end_time:
+                        continue
                     page_offset = int(row[2])
                     request_type = row[4].strip().lower()
                     if request_type in {'read', 'write'}:
@@ -131,15 +136,10 @@ class CacheSimulator:
         total_requests = len(sequence)
         total_hits = 0
         total_misses = 0
-        cold_misses = 0
         read_hits = 0
         read_misses = 0
         write_hits = 0
         write_misses = 0
-        accessed = {}
-
-        for page, _ in sequence:
-            accessed[page] = 0
 
         for i in tqdm(range(total_requests), desc=f"Processing {filename}"):
             page, req_type = sequence[i]
@@ -158,11 +158,6 @@ class CacheSimulator:
                     read_misses += 1
                 else:
                     write_misses += 1
-
-                if accessed[page] == 0:
-                    cold_misses += 1
-                    accessed[page] = 1
-
                 cache.access_page(page, nu)
 
         hit_percentage = (total_hits / total_requests) * 100 if total_requests > 0 else 0
@@ -181,7 +176,6 @@ class CacheSimulator:
             'Total Requests': total_requests,
             'Total Hits': total_hits,
             'Total Misses': total_misses,
-            'Cold Misses': cold_misses,
             'Hit Percentage': hit_percentage,
             'Read Hit Ratio': read_hit_ratio,
             'Write Hit Ratio': write_hit_ratio
@@ -204,8 +198,7 @@ class CacheSimulator:
             ["Write Misses", stats['Write Misses'], f"{(stats['Write Misses'] / stats['Write Requests'] * 100) if stats['Write Requests'] else 0:.2f}%"],
             ["Total Requests", stats['Total Requests'], ""],
             ["Total Hits", stats['Total Hits'], f"{stats['Hit Percentage']:.2f}%"],
-            ["Total Misses", stats['Total Misses'], f"{(stats['Total Misses'] / stats['Total Requests'] * 100) if stats['Total Requests'] else 0:.2f}%"],
-            ["Cold Misses", stats['Cold Misses'], f"{(stats['Cold Misses'] / stats['Total Misses'] * 100) if stats['Total Misses'] else 0:.2f}%"]
+            ["Total Misses", stats['Total Misses'], f"{(stats['Total Misses'] / stats['Total Requests'] * 100) if stats['Total Requests'] else 0:.2f}%"]
         ]
 
         headers = ["Metric", "Count", "Ratio"]
@@ -214,12 +207,14 @@ class CacheSimulator:
         print(tabulate(table, headers=headers, tablefmt="grid"))
         print("----------------------------")
 
-def cache_simulator(filename, cache_size=10000):
+def cache_simulator(filename, cache_size=10000, start_time=0, end_time=INFINITY):
     """
     Simulates the cache for a given CSV file.
 
     :param filename: Name of the CSV file (without extension).
     :param cache_size: Maximum number of items the cache can hold.
+    :param start_time: Start time for filtering requests.
+    :param end_time: End time for filtering requests.
     """
     script_dir = Path(__file__).parent
     file_path = script_dir / f"{filename}.csv"
@@ -229,7 +224,7 @@ def cache_simulator(filename, cache_size=10000):
         return
 
     simulator = CacheSimulator(cache_size=cache_size)
-    sequence = simulator.read_csv(file_path)
+    sequence = simulator.read_csv(file_path, start_time, end_time)
 
     if not sequence:
         print("Error: No valid data found in the input file.")
@@ -244,9 +239,11 @@ def main():
     Main function to execute the simulation for multiple CSV files.
     """
     filenames = ["A42", "A108", "A129", "A669"]
-    cache_size = 10000
+    cache_size = int(input("Enter cache size (default 10000): ") or 10000)
+    start_time = float(input("Enter start time (default 0): ") or 0)
+    end_time = float(input("Enter end time (default inf): ") or float('inf'))
 
     for fname in filenames:
-        cache_simulator(fname, cache_size)
+        cache_simulator(fname, cache_size, start_time, end_time)
 
 main()

@@ -18,15 +18,18 @@ class LRUCache:
         self.max_capacity = max_capacity
         self.cache_store = OrderedDict()
 
-    def load_and_filter_data(self, file_path) -> pd.DataFrame:
+    def load_and_filter_data(self, file_path, start_time=0, end_time=float('inf')) -> pd.DataFrame:
         """
-        Loads data from a CSV file without filtering.
+        Loads data from a CSV file and filters based on the timestamp range.
 
         :param file_path: Path to the CSV file.
-        :return: pandas DataFrame containing all rows of the file.
+        :param start_time: Start timestamp for filtering.
+        :param end_time: End timestamp for filtering.
+        :return: pandas DataFrame containing filtered rows of the file.
         """
         raw_data = pd.read_csv(file_path)
-        return raw_data
+        filtered_data = raw_data[(raw_data.iloc[:, 0] >= start_time) & (raw_data.iloc[:, 0] <= end_time)]
+        return filtered_data
 
     def access_or_update_cache(self, item):
         """
@@ -53,8 +56,6 @@ class LRUCache:
         """
         read_requests, read_misses = 0, 0
         write_requests, write_misses = 0, 0
-        cold_misses = 0
-        tracked_access = set()
         offsets = dataset.iloc[:, 2].to_numpy()
         operations = dataset.iloc[:, 4].to_numpy()
 
@@ -64,22 +65,16 @@ class LRUCache:
                 read_requests += 1
                 if not self.access_or_update_cache(offset):
                     read_misses += 1
-                    if offset not in tracked_access:
-                        cold_misses += 1
-                        tracked_access.add(offset)
             else:
                 write_requests += 1
                 if not self.access_or_update_cache(offset):
                     write_misses += 1
-                    if offset not in tracked_access:
-                        cold_misses += 1
-                        tracked_access.add(offset)
 
-        stats = self.collect_statistics(read_requests, read_misses, write_requests, write_misses, cold_misses)
+        stats = self.collect_statistics(read_requests, read_misses, write_requests, write_misses)
         self.display_results(stats, filename)
 
     @staticmethod
-    def collect_statistics(reads, read_misses, writes, write_misses, cold_misses):
+    def collect_statistics(reads, read_misses, writes, write_misses):
         """
         Collects and calculates cache statistics.
 
@@ -87,7 +82,6 @@ class LRUCache:
         :param read_misses: Total read misses.
         :param writes: Total write requests.
         :param write_misses: Total write misses.
-        :param cold_misses: Total cold misses.
         :return: A dictionary containing all calculated statistics.
         """
         total_requests = reads + writes
@@ -109,7 +103,6 @@ class LRUCache:
             'Total Requests': total_requests,
             'Total Hits': total_hits,
             'Total Misses': total_misses,
-            'Cold Misses': cold_misses,
             'Hit Percentage': hit_percentage,
             'Read Hit Ratio': read_hit_ratio,
             'Write Hit Ratio': write_hit_ratio,
@@ -133,22 +126,23 @@ class LRUCache:
             ["Total Requests", stats['Total Requests'], ""],
             ["Total Hits", stats['Total Hits'], f"{stats['Hit Percentage']:.2f}%"],
             ["Total Misses", stats['Total Misses'], f"{(stats['Total Misses'] / stats['Total Requests'] * 100) if stats['Total Requests'] else 0:.2f}%"],
-            ["Cold Misses", stats['Cold Misses'], f"{(stats['Cold Misses'] / stats['Total Misses'] * 100) if stats['Total Misses'] else 0:.2f}%"],
         ]
 
         headers = ["Metric", "Count", "Ratio"]
 
-        print(f"\nSimulation Results for {filename}:")
+        print(f"\nSimulation Results:")
         print(tabulate(table, headers=headers, tablefmt="grid"))
         print("----------------------------")
 
 
-def cache_simulator(filenames, cache_size):
+def cache_simulator(filenames, cache_size=10000, start_time=0, end_time=float('inf')):
     """
     Simulates the LRU cache for a list of CSV files.
 
     :param filenames: List of CSV file names (without extensions).
-    :param cache_size: Maximum number of items the cache can hold.
+    :param cache_size: Maximum number of items the cache can hold (default 10000).
+    :param start_time: Start timestamp for filtering (default 0).
+    :param end_time: End timestamp for filtering (default inf).
     """
     script_dir = Path(__file__).parent
 
@@ -160,7 +154,7 @@ def cache_simulator(filenames, cache_size):
             continue
 
         simulator = LRUCache(cache_size)
-        dataset = simulator.load_and_filter_data(file_path)
+        dataset = simulator.load_and_filter_data(file_path, start_time, end_time)
         simulator.simulate_lru_policy(dataset, file_path.stem)
 
 
@@ -169,9 +163,11 @@ def main():
     Main function to execute the simulation for multiple CSV files.
     """
     filenames = ["A42", "A108", "A129", "A669"]
-    cache_size = 10000
+    cache_size = int(input("Enter cache size (default 10000): ") or 10000)
+    start_time = float(input("Enter start time (default 0): ") or 0)
+    end_time = float(input("Enter end time (default inf): ") or float('inf'))
 
-    cache_simulator(filenames, cache_size)
+    cache_simulator(filenames, cache_size, start_time, end_time)
 
 
 main()

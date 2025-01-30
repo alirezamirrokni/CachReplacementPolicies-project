@@ -69,7 +69,7 @@ class NHitCache:
         return self.tracking[item] >= self.insertion_threshold
 
 
-def simulate_nhit(file_path, cache_size=10000, trigger_threshold=80.0, insertion_threshold=2):
+def simulate_nhit(file_path, cache_size=10000, trigger_threshold=80.0, insertion_threshold=2, start_time=0, end_time=float('inf')):
     """
     Simulates the NHit promotion policy.
 
@@ -77,6 +77,8 @@ def simulate_nhit(file_path, cache_size=10000, trigger_threshold=80.0, insertion
     :param cache_size: Maximum number of items the cache can hold.
     :param trigger_threshold: Cache occupancy percentage to trigger tracking.
     :param insertion_threshold: Number of accesses required before promotion.
+    :param start_time: Start timestamp for filtering.
+    :param end_time: End timestamp for filtering.
     """
     nhit_cache = NHitCache(cache_size, trigger_threshold, insertion_threshold)
 
@@ -90,15 +92,18 @@ def simulate_nhit(file_path, cache_size=10000, trigger_threshold=80.0, insertion
         print(f"Error: {file_path} does not have at least 5 columns.")
         return
 
+    # Filter data based on timestamp range
+    timestamps = data_frame.iloc[:, 0].to_numpy()
+    filtered_indices = (timestamps >= start_time) & (timestamps <= end_time)
+    filtered_offsets = data_frame.iloc[:, 2].to_numpy()[filtered_indices]
+    filtered_operations = data_frame.iloc[:, 4].to_numpy()[filtered_indices]
+
     total_requests = 0
     read_hits, read_misses = 0, 0
     write_hits, write_misses = 0, 0
-    cold_misses = 0
     tracked_access = set()
-    offsets = data_frame.iloc[:, 2].to_numpy()
-    operations = data_frame.iloc[:, 4].to_numpy()
 
-    for offset, operation in tqdm(zip(offsets, operations), total=len(offsets), desc=f"Processing {file_path.stem}"):
+    for offset, operation in tqdm(zip(filtered_offsets, filtered_operations), total=len(filtered_offsets), desc=f"Processing {file_path.stem}"):
         total_requests += 1
         if offset in nhit_cache.cache:
             if operation == "Read":
@@ -110,22 +115,19 @@ def simulate_nhit(file_path, cache_size=10000, trigger_threshold=80.0, insertion
                 read_misses += 1
             else:
                 write_misses += 1
-            if offset not in tracked_access:
-                cold_misses += 1
-                tracked_access.add(offset)
+            tracked_access.add(offset)
             nhit_cache.access(offset)
             if nhit_cache.should_promote(offset):
                 nhit_cache.promote(offset)
 
     stats = collect_statistics(
         read_hits + read_misses, read_misses,
-        write_hits + write_misses, write_misses,
-        cold_misses
+        write_hits + write_misses, write_misses
     )
     display_results(stats, file_path.stem)
 
 
-def collect_statistics(reads, read_misses, writes, write_misses, cold_misses):
+def collect_statistics(reads, read_misses, writes, write_misses):
     """
     Collects and calculates cache statistics.
 
@@ -133,7 +135,6 @@ def collect_statistics(reads, read_misses, writes, write_misses, cold_misses):
     :param read_misses: Total read misses.
     :param writes: Total write requests.
     :param write_misses: Total write misses.
-    :param cold_misses: Total cold misses.
     :return: A dictionary containing all calculated statistics.
     """
     total_requests = reads + writes
@@ -155,7 +156,6 @@ def collect_statistics(reads, read_misses, writes, write_misses, cold_misses):
         'Total Requests': total_requests,
         'Total Hits': total_hits,
         'Total Misses': total_misses,
-        'Cold Misses': cold_misses,
         'Hit Percentage': hit_percentage,
         'Read Hit Ratio': read_hit_ratio,
         'Write Hit Ratio': write_hit_ratio,
@@ -179,12 +179,11 @@ def display_results(stats, filename):
         ["Total Requests", stats['Total Requests'], ""],
         ["Total Hits", stats['Total Hits'], f"{stats['Hit Percentage']:.2f}%"],
         ["Total Misses", stats['Total Misses'], f"{(stats['Total Misses'] / stats['Total Requests'] * 100) if stats['Total Requests'] else 0:.2f}%"],
-        ["Cold Misses", stats['Cold Misses'], f"{(stats['Cold Misses'] / stats['Total Misses'] * 100) if stats['Total Misses'] else 0:.2f}%"],
     ]
 
     headers = ["Metric", "Count", "Ratio"]
 
-    print(f"\nSimulation Results for {filename}:")
+    print(f"\nSimulation Results:")
     print(tabulate(table, headers=headers, tablefmt="grid"))
     print("----------------------------")
 
@@ -194,13 +193,18 @@ def main():
     Main function to execute the simulation for multiple CSV files.
     """
     filenames = ["A42", "A108", "A129", "A669"]
-    cache_size = 10000
+    cache_size = int(input("Enter cache size (default 10000): ") or 10000)
+    trigger_threshold = float(input("Enter trigger threshold (default 80.0): ") or 80.0)
+    insertion_threshold = int(input("Enter insertion threshold (default 2): ") or 2)
+    start_time = float(input("Enter start time (default 0): ") or 0)
+    end_time = float(input("Enter end time (default inf): ") or float('inf'))
 
     for file_name in filenames:
         file_path = Path(__file__).parent / f"{file_name}.csv"
         if not file_path.exists():
             print(f"Error: File {file_path} does not exist.")
             continue
-        simulate_nhit(file_path, cache_size)
+        simulate_nhit(file_path, cache_size, trigger_threshold, insertion_threshold, start_time, end_time)
+
 
 main()
